@@ -1,0 +1,343 @@
+-- Solve the below SQL problems using the Famous Paintings & Museum dataset:
+================================-------------START-------------==================================
+
+1) Fetch all the paintings which are not displayed on any museums? (10,223 DISTINCT RECORDS)
+
+SELECT COUNT (distinct(work_id)) FROM `helical-button-300604.museum_data.work` 
+WHERE museum_id is null;
+
+OR
+
+SELECT COUNT(work_id) FROM `helical-button-300604.museum_data.work` 
+WHERE museum_id is null
+GROUP BY work_id;
+===========================================================================================
+
+2) Are there museuems without any paintings?
+
+SELECT COUNT(museum_id) FROM `helical-button-300604.museum_data.work` 
+WHERE work_id is null
+GROUP BY museum_id;
+
+OR
+
+SELECT * from `helical-button-300604.museum_data.museum` m
+WHERE not exists (select 1 from `helical-button-300604.museum_data.work` w
+					 where w.museum_id=m.museum_id);
+OR
+
+SELECT * from `helical-button-300604.museum_data.museum` as m
+FULL OUTER JOIN `helical-button-300604.museum_data.work` as w
+ON m.museum_id = w.museum_id
+WHERE w.work_id is null;
+
+============================================================================================
+3) How many paintings have an asking price of more than their regular price? (0)
+
+SELECT * FROM `helical-button-300604.museum_data.product_size`
+WHERE sale_price > regular_price;
+===========================================================================================
+
+4) Identify the paintings whose asking price is less than 50% of its regular price: (58)
+
+SELECT * FROM `helical-button-300604.museum_data.product_size`
+WHERE sale_price < (0.5 * regular_price);
+
+============================================================================================
+5) Which canva size costs the most?
+
+SELECT c.label, p.sale_price 
+FROM `helical-button-300604.museum_data.canvas_size` as c
+INNER JOIN `helical-button-300604.museum_data.product_size` as p
+ON p.size_id = c.size_id
+ORDER BY p.sale_price DESC
+limit 1;
+
+OR
+
+SELECT c.label, p.sale_price
+FROM (select * , rank() over(order by sale_price desc) as rnk 
+	FROM `helical-button-300604.museum_data.product_size`) as p
+JOIN `helical-button-300604.museum_data.canvas_size` as c ON c.size_id = p.size_id
+where p.rnk=1;	
+
+==========================================================================================
+
+6) Delete duplicate records from work, product_size, subject and image_link tables:
+
+
+delete from `helical-button-300604.museum_data.work`
+	where work_id not in (select min(work_id)
+	from `helical-button-300604.museum_data.product_size`
+	group by work_id, size_id );
+
+delete from `helical-button-300604.museum_data.work`
+	where work_id not in (select min(work_id)
+	from `helical-button-300604.museum_data.subject`
+	group by work_id, subject_id );
+===========================================================================================
+
+7) Identify the museums with invalid city information in the given dataset
+
+SELECT * FROM `helical-button-300604.museum_data.museum`
+WHERE regexp_contains(city, r'^[0-9_.+-]+') OR city IS NULL OR city ;
+
+=========================================================================================
+
+8) Museum_Hours table has 1 invalid entry. Identify it and remove it.
+
+
+=======================================================================================
+
+9) Fetch the top 10 most famous painting subject:
+
+select * 
+	from (select s.subject, count(1) as no_of_paintings, rank() over(order by count(1) desc) as rankin 
+		from `helical-button-300604.museum_data.work` w
+		join `helical-button-300604.museum_data.subject` s 
+    		on s.work_id = w.work_id
+		group by s.subject ) x
+where ranking <= 10
+ORDER BY ranking ASC;
+
+=================================================================================================================
+
+10) Identify the museums which are open on both Sunday and Monday. Display museum name, city:
+
+SELECT distinct m.name as museum_name,  m.city, m.state,m.country
+  FROM `helical-button-300604.museum_data.museum_horus` as h
+  JOIN `helical-button-300604.museum_data.museum` as m
+  ON h.museum_id = m.museum_id
+  WHERE h.day= 'Sunday' 
+  AND EXISTS (
+    select 1 from `helical-button-300604.museum_data.museum_horus` mh2 
+			where mh2.museum_id=h.museum_id 
+			and mh2.day='Monday');
+
+==================================================================================================================
+
+11) How many museums are open every single day?
+
+
+
+==================================================================================================================
+
+12) Which are the top 5 most popular museum? (Popularity is defined based on most no of paintings in a museum)
+
+select s.name, s.city, s.country, x.no_of_paintings
+	from (
+    select s.museum_id, count(1) as no_of_paintings, 
+    rank() over(order by count(1) desc) as rankin,
+		from `helical-button-300604.museum_data.work` w
+		join `helical-button-300604.museum_data.museum` s 
+    on s.museum_id = w.museum_id
+		group by s.museum_id ) x
+join `helical-button-300604.museum_data.museum` s
+ON s.museum_id = x.museum_id
+where x.rankin <= 5
+ORDER BY x.rankin ASC;
+
+=================================================================================================================
+
+13) Who are the top 5 most popular artist? (Popularity is defined based on most no of paintings done by an artist)
+
+select s.full_name as name_of_artist,s.style, x.no_of_paintings, s.nationality, x.rankin
+	from (
+    select s.artist_id, count(1) as no_of_paintings, 
+    rank() over(order by count(1) desc) as rankin,
+		from `helical-button-300604.museum_data.work` w
+		join `helical-button-300604.museum_data.artist` s 
+    on s.artist_id = w.artist_id
+		group by s.artist_id ) x
+join `helical-button-300604.museum_data.artist` s
+ON s.artist_id = x.artist_id
+where x.rankin <= 5
+ORDER BY x.rankin ASC;
+================================================================================
+
+14) Display the 3 least popular canva sizes
+
+select label, rankin, no_of_paintings 
+	from (
+    select c.size_id,c.label, count(1) as no_of_paintings, 
+    DENSE_RANK() over(order by count(1)) as rankin 
+		from `helical-button-300604.museum_data.work` w
+		join `helical-button-300604.museum_data.product_size` s 
+    on s.work_id = w.work_id
+    join `helical-button-300604.museum_data.canvas_size` c
+    ON c.size_id = s.size_id
+		group by c.size_id,c.label) AS x
+where x.rankin <= 3;
+================================================================================
+15) Which museum is open for the longest during a day. Dispay museum name, state and hours open and which day?
+
+select museum_name, state as city,day, open, close, duration
+	from (	select m.name as museum_name, m.state, day, open, close
+			, timestamp(open,'HH:MI AM') 
+			, timestamp(close,'HH:MI PM') 
+			, timestamp(close,'HH:MI PM') - timestamp(open,'HH:MI AM') as duration
+			, rank() over (order by (timestamp(close,'HH:MI PM') - timestamp(open,'HH:MI AM')) desc) as rnk
+			from `helical-button-300604.museum_data.museum_horus` mh
+		 	join `helical-button-300604.museum_data.museum` m on m.museum_id=mh.museum_id) x
+	where x.rnk=1;
+==================================================================================================================
+
+16) Which museum has the most no of most popular painting style?
+
+with most_worked_style as 
+			(select style
+			,rank() over(order by count(1) desc) as ranking
+			from `helical-button-300604.museum_data.work`
+			group by style),
+		popular_style_in_museum as
+			(select w.museum_id,m.name as museum_name,most_worked_style.style, count(1) as no_of_paintings
+			,rank() over(order by count(1) desc) as ranking
+			from `helical-button-300604.museum_data.work` w
+			join `helical-button-300604.museum_data.museum` m on m.museum_id=w.museum_id
+			join most_worked_style on most_worked_style.style = w.style
+			where w.museum_id is not null
+			and most_worked_style.ranking=1
+			group by w.museum_id, m.name,most_worked_style.style)
+	select museum_name,style,no_of_paintings
+	from popular_style_in_museum
+	where ranking=1;
+==========================================================================================================================
+
+17) Identify the artists whose paintings are displayed in multiple countries
+
+with multiple_countries as
+			(select a.full_name,m.name as museum_name
+			from `helical-button-300604.museum_data.work` w
+			join `helical-button-300604.museum_data.museum` m 
+			on m.museum_id=w.museum_id
+			join `helical-button-300604.museum_data.artist` as a on a.artist_id = w.artist_id
+			GROUP BY  a.full_name, m.name)
+	select full_name,count(1) as no_of_countries,
+	from multiple_countries
+	group by full_name
+	having count(1) >1
+	ORDER BY no_of_countries DESC;
+==========================================================================================================================
+
+18) Display the country and the city with most no of museums. Output 2 seperate columns to mention the city and country. If there are multiple value, seperate them with comma.
+with cte_country as 
+			(select country, count(1)
+			, rank() over(order by count(1) desc) as rnk
+			from `helical-button-300604.museum_data.museum`
+			group by country),
+		cte_city as
+			(select city, count(1)
+			, rank() over(order by count(1) desc) as rnk
+			from `helical-button-300604.museum_data.museum`
+			group by city)
+	select string_agg(distinct country.country,', '), string_agg(city.city,', '), count(1) as cnk
+	from cte_country country
+	cross join cte_city city
+	where country.rnk = 1 and city.rnk = 1;
+
+
+=======================================================================================================================
+
+19) Identify the artist and the museum where the most expensive and least expensive painting is placed. Display the artist name, sale_price, painting name, museum name, museum city and canvas label
+
+==========================================================================================================================
+20) Which country has the 5th highest no of paintings?
+
+with pop_countries as
+			(select m.country, count(1) as no_of_paintings, RANK() OVER (ORDER BY count(1) DESC) AS rnk
+			from `helical-button-300604.museum_data.work` w
+			join `helical-button-300604.museum_data.museum` m 
+			on m.museum_id=w.museum_id
+			GROUP BY m.country)
+	select country,no_of_paintings
+	from pop_countries
+	where rnk=5;
+========================================================================================================================
+
+21) Which are the 3 most popular and 3 least popular painting styles?
+with top_n_bot_n as (
+	Select p.style ,count(1) as no_of_paintings_in_style, RANK() OVER (ORDER BY count(1) DESC) AS rnk,
+	ROW_NUMBER() OVER (Order BY count(1)) as TopTHREE, 
+	ROW_NUMBER() OVER (Order BY count(1) Desc) as	BottomTHREE
+	FROM `helical-button-300604.museum_data.work` p
+	GROUP BY p.style)
+Select style, no_of_paintings_in_style,rnk,
+case 
+		when rnk <=3 then 'Most Popular' 
+		else 'Least Popular' 
+	end as remarks
+From top_n_bot_n 
+Where TopTHREE <=3 or BottomTHREE <=3
+ORDER BY BottomTHREE asc;
+-----
+OR
+-----
+SELECT * FROM
+(
+	(SELECT style ,count(1) as no_of_paintings_in_style, RANK() OVER (ORDER BY count(1) DESC) AS rnk,
+	FROM `helical-button-300604.museum_data.work` 
+	GROUP BY style
+	ORDER BY rnk asc
+	LIMIT 3)
+	union ALL
+	(Select style ,count(1) as no_of_paintings_in_style, RANK() OVER (ORDER BY count(1) DESC) AS rnk,
+	FROM `helical-button-300604.museum_data.work` 
+	GROUP BY style
+	ORDER BY rnk DESC
+	LIMIT 3)
+);
+------
+OR
+------
+with cte as 
+		(select style, count(1) as cnt
+		, rank() over(order by count(1) desc) rnk
+		, count(1) over() as no_of_records
+		from `helical-button-300604.museum_data.work`
+		where style is not null
+		group by style)
+	select style, rnk,
+	case 
+		when rnk <=3 then 'Most Popular' 
+		else 'Least Popular' 
+	end as remarks 
+	from cte
+	where rnk <=3
+	or rnk > no_of_records - 3
+	order by rnk asc;
+=======================================================================================================================
+
+22) Which artist has the most no of Portraits paintings outside USA?. Display artist name, no of paintings and the artist nationality:
+
+SELECT full_name, subject, no_of_paintings FROM
+			(select a.full_name,s.subject,count(1) as no_of_paintings,
+			rank() over(order by count(1) desc) as rnk
+			from `helical-button-300604.museum_data.work` w
+			join `helical-button-300604.museum_data.museum` m on m.museum_id=w.museum_id
+			join `helical-button-300604.museum_data.artist` as a on a.artist_id = w.artist_id
+			join `helical-button-300604.museum_data.subject` s on s.work_id=w.work_id
+			where s.subject='Portraits'
+			and m.country != 'USA'
+			GROUP BY  a.full_name, s.subject) X
+
+where X.rnk=1;
+=========================================================================================================================
+23) Find top 5 cities with highest number of museums:
+
+select city, no_of_museums from 
+(select m.city,count(1) as no_of_museums, rank() over(order by count(1) desc) as rnk
+from `helical-button-300604.museum_data.museum` m
+group by m.city) x
+order by no_of_museums desc
+LIMIT 5;
+=========================================================================================================================
+24) Find top 5 countries with highest number of museums:
+
+select country, no_of_museums from 
+(select m.country,count(1) as no_of_museums, rank() over(order by count(1) desc) as rnk
+from `helical-button-300604.museum_data.museum` m
+group by m.country) x
+order by no_of_museums desc
+LIMIT 5;
+========================================================================================================================
+
